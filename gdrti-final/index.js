@@ -6,12 +6,11 @@ app.use(express.json());
 const VERIFY_TOKEN = "gdrti2024";
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-const GEMINI_KEY = process.env.GEMINI_KEY;
+const GROQ_KEY = process.env.GROQ_KEY;
 
 const conversations = {};
 const agentMode = {};
 
-// Webhook yoxlama
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === VERIFY_TOKEN) {
     res.send(req.query["hub.challenge"]);
@@ -20,7 +19,6 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-// Gələn mesajlar
 app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
   try {
@@ -37,11 +35,11 @@ app.post("/webhook", async (req, res) => {
     if (agentMode[from]) return;
 
     if (!conversations[from]) conversations[from] = [];
-    conversations[from].push({ role: "user", parts: [{ text: userText }] });
+    conversations[from].push({ role: "user", content: userText });
     if (conversations[from].length > 10) conversations[from] = conversations[from].slice(-10);
 
-    const aiReply = await getGeminiReply(conversations[from]);
-    conversations[from].push({ role: "model", parts: [{ text: aiReply }] });
+    const aiReply = await getGroqReply(conversations[from]);
+    conversations[from].push({ role: "assistant", content: aiReply });
 
     await sendWhatsApp(from, aiReply);
 
@@ -55,26 +53,33 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// Gemini AI
-async function getGeminiReply(history) {
-  const systemText = `Sən Gəncə-Daşkəsən Regional Təhsil İdarəsinin WhatsApp köməkçisisən.
+async function getGroqReply(history) {
+  const systemMsg = {
+    role: "system",
+    content: `Sən Gəncə-Daşkəsən Regional Təhsil İdarəsinin WhatsApp köməkçisisən.
 Hansı dildə yazılıbsa (Azərbaycan/Rus/İngilis) həmin dildə cavab ver.
 Mövzular: məktəb qeydiyyatı, müəllim müraciətləri, imtahan məlumatları, şikayətlər.
 Ünvan: Gəncə şəh., İstiqlaliyyət küç. 2. İş saatları: B.e-Cümə 09:00-18:00.
-Qısa və nəzakətli cavab ver (maks 3 cümlə). Bilmirsənsə idarəyə müraciət etməyi tövsiyə et.`;
+Qısa və nəzakətli cavab ver (maks 3 cümlə). Bilmirsənsə idarəyə müraciət etməyi tövsiyə et.`
+  };
 
   const resp = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+    "https://api.groq.com/openai/v1/chat/completions",
     {
-      system_instruction: { parts: [{ text: systemText }] },
-      contents: history,
-      generationConfig: { maxOutputTokens: 300 }
+      model: "llama-3.1-8b-instant",
+      messages: [systemMsg, ...history],
+      max_tokens: 300
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${GROQ_KEY}`,
+        "Content-Type": "application/json"
+      }
     }
   );
-  return resp.data.candidates[0].content.parts[0].text;
+  return resp.data.choices[0].message.content;
 }
 
-// Eskalasiya
 function shouldEscalate(text, history) {
   const triggers = ["insan", "agent", "əməkdaş", "canlı", "человек", "оператор", "human", "operator", "!!!"];
   if (triggers.some(t => text.toLowerCase().includes(t))) return true;
@@ -82,7 +87,6 @@ function shouldEscalate(text, history) {
   return false;
 }
 
-// WhatsApp mesaj
 async function sendWhatsApp(to, text) {
   await axios.post(
     `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
@@ -91,11 +95,10 @@ async function sendWhatsApp(to, text) {
   );
 }
 
-// Agent API
 app.get("/conversations", (req, res) => {
   res.json(Object.entries(conversations).map(([phone, msgs]) => ({
     phone, isAgent: !!agentMode[phone],
-    lastMessage: msgs[msgs.length - 1]?.parts?.[0]?.text?.slice(0, 60),
+    lastMessage: msgs[msgs.length - 1]?.content?.slice(0, 60),
     count: msgs.length
   })));
 });
