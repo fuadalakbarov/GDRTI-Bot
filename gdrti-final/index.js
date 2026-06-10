@@ -44,46 +44,56 @@ app.post("/webhook", async (req, res) => {
     await sendWhatsApp(from, aiReply);
 
     if (shouldEscalate(userText, conversations[from])) {
-      await sendWhatsApp(from, "⚡ Sizi canlı əməkdaşımıza keçirirəm. Bir az gözləyin 🙏");
+      await sendWhatsApp(from, "Sizi canlı əməkdaşımıza keçirirəm. Bir az gözləyin.");
       agentMode[from] = true;
-      console.log(`🚨 ESKALASIYA: ${from}`);
+      console.log("ESKALASIYA: " + from);
     }
   } catch (e) {
-    console.error("Xəta:", e.message);
+    console.error("Xeta:", e.message);
   }
 });
 
 async function getGroqReply(history) {
   const systemMsg = {
     role: "system",
-    content: `Sən Gəncə-Daşkəsən Regional Təhsil İdarəsinin rəsmi WhatsApp köməkçisisən.
-Vətəndaşlara yalnız təhsillə bağlı məsələlərdə kömək edirsən.
-Hansı dildə yazılıbsa (Azərbaycan, Rus, İngilis) həmin dildə cavab ver.
+    content: `Sen Gence-Daskesen Regional Tehsil Idaresinin resmi WhatsApp komekcisisən.
+Vetendaslara yalniz tehsille bagli meselelerde komek edirsən.
+Hansi dilde yazilib (Azerbaycan, Rus, İngilis) hemin dilde cavab ver.
+Azerbaycan dilinde yazilsa, Azerbaycan dilinde cavab ver.
 
-İdarə haqqında rəsmi məlumat:
-- Tam adı: Gəncə-Daşkəsən Regional Təhsil İdarəsi
-- Ünvan: Gəncə şəhəri, Atatürk prospekti və M.Hacıyev küçəsinin kəsişməsi
+IDARE HAQQINDA:
+- Tam adi: Gence-Daskesen Regional Tehsil Idaresi  
+- Unvan: Gence seheri, Ataturk prospekti ve M.Haciyev kucesinin kesismesi
 - Telefon: 146-0-2
 - WhatsApp: (050) 347 87 02
-- E-poçt: info@ganja.edu.gov.az
-- Veb sayt: ganja.edu.gov.az
-- İş saatları: Bazar ertəsi - Cümə, 09:00 - 18:00
-- Müdirin qəbul günü: Çərşənbə, 15:00 - 17:00
+- E-pocht: info@ganja.edu.gov.az
+- Web sayt: ganja.edu.gov.az
+- Is saatlari: Bazar ertesi - Cume, 09:00-18:00
+- Mudirin qebul gunu: Cersembe, 15:00-17:00
 
-Xidmətlər:
-- Məktəbə qeydiyyat və şagird köçürməsi
-- Müəllim işə qəbulu və sənəd təqdimi
-- Məktəbəqədər təhsil müəssisələri
-- Buraxılış və imtahan məlumatları
-- Şikayət və təkliflər
-- Psixoloji dəstək xidməti
-- Gənclərin çağırışaqədərki hazırlığı
+MEXTEBLE QEBUL (1-ci sinif):
+- Elektron qebul portali: www.mektebeqebul.edu.az
+- 7 yasini tamam eden usaqlar qebul olunur
+- Mextebehazirliq qrupundaki usaqlar avtomatik I sinfe kecir
+- Qeydiyyat ucun usagin sexsiyyet vesiqesi lazimdir
+- Azerbaycan bolmesi ucun: 6 may - 5 iyun arasinda muraciet
 
-Qaydalar:
-- Yalnız təhsil mövzusunda cavab ver
-- Qısa, aydın və nəzakətli cavab ver (maks 4 cümlə)
-- Bilmədiyin məsələdə: "Bu barədə ətraflı məlumat üçün 146-0-2 nömrəsinə zəng edin və ya info@ganja.edu.gov.az ünvanına yazın" de
-- Heç vaxt uydurma məlumat vermə`
+MUELLIM ISE QEBUL:
+- Muellim sertifikasiya imtahani teleb olunur
+- Elanlar: ganja.edu.gov.az saytinda
+- Muraciet: idarenin karguzarliq seksiyasina
+
+SIKAYET VE MURACIETLER:
+- WhatsApp: (050) 347 87 02
+- Elektron: info@ganja.edu.gov.az  
+- Sexsi qebul: Cersembe 15:00-17:00
+- Telefonla: 146-0-2
+
+QAYDALAR:
+- Qisa, aydın ve nezaketli cavab ver (max 3-4 cumlə)
+- Bilmediyinde: "Bu barede 146-0-2 nomresine zeng edin ve ya info@ganja.edu.gov.az unvanina yazin" de
+- Hec vaxt uydurmaca melumat verme
+- Mudaxile etme, yalniz tehsille bagli sualara cavab ver`
   };
 
   const resp = await axios.post(
@@ -91,11 +101,12 @@ Qaydalar:
     {
       model: "llama-3.3-70b-versatile",
       messages: [systemMsg, ...history],
-      max_tokens: 400
+      max_tokens: 400,
+      temperature: 0.3
     },
     {
       headers: {
-        Authorization: `Bearer ${GROQ_KEY}`,
+        Authorization: "Bearer " + GROQ_KEY,
         "Content-Type": "application/json"
       }
     }
@@ -104,8 +115,9 @@ Qaydalar:
 }
 
 function shouldEscalate(text, history) {
-  const triggers = ["insan", "agent", "əməkdaş", "canlı", "işçi", "operator",
-                    "человек", "оператор", "живой", "human", "operator", "!!!"];
+  const triggers = ["insan", "agent", "emedcas", "canli", "isci", "operator",
+                    "chelovek", "operator", "zhivoy", "human", "live", "!!!",
+                    "komeyek etmir", "anlamır", "olmur", "bacarmır"];
   if (triggers.some(t => text.toLowerCase().includes(t))) return true;
   if (history.length >= 8) return true;
   return false;
@@ -113,9 +125,9 @@ function shouldEscalate(text, history) {
 
 async function sendWhatsApp(to, text) {
   await axios.post(
-    `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+    "https://graph.facebook.com/v19.0/" + PHONE_NUMBER_ID + "/messages",
     { messaging_product: "whatsapp", to, type: "text", text: { body: text } },
-    { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" } }
+    { headers: { Authorization: "Bearer " + WHATSAPP_TOKEN, "Content-Type": "application/json" } }
   );
 }
 
@@ -129,7 +141,7 @@ app.get("/conversations", (req, res) => {
 
 app.post("/agent-reply", async (req, res) => {
   const { phone, message } = req.body;
-  await sendWhatsApp(phone, `👤 Əməkdaş: ${message}`);
+  await sendWhatsApp(phone, "Emedcas: " + message);
   res.json({ ok: true });
 });
 
@@ -138,5 +150,5 @@ app.post("/agent-done", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/", (req, res) => res.send("GDRTI Bot işləyir ✅"));
-app.listen(3000, () => console.log("Bot 3000-də işləyir"));
+app.get("/", (req, res) => res.send("GDRTI Bot isleyir"));
+app.listen(3000, () => console.log("Bot 3000-de isleyir"));
